@@ -1,0 +1,60 @@
+name: Trivy Scan
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+
+jobs:
+  trivy-scan:
+    name: Escanear Trivy
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Obtener el codigo del repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Instalar Trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg
+
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+          trivy --version
+
+      # 3. Escanear Imagen
+      - name: Scan Image
+        run: |
+          REPO_NAME="67304698${GITHUB_REPOSITORY##*/}"
+
+          trivy image \
+            --format json \
+            -o "${REPO_NAME}.json" \
+            ubuntu:22.04
+
+          ls -lh "${REPO_NAME}.json"
+
+      # 4. Enviar reporte OpenVulnTracker
+      - name: Upload JSON Report
+        env:
+          API_TOKEN: "vt_f1aa9cdec5197797c568a66d0e2d292bf5514efb221be7812d03a2bcadc87863"
+        run: |
+          REPO_NAME="67304698${GITHUB_REPOSITORY##*/}"
+
+          curl -X POST -H "Authorization: Bearer ${API_TOKEN}" \
+            -F "file=@${REPO_NAME}.json" -F "branch=main"  -F "scan_type=trivy" \
+            http://52.90.184.174/api/import 
